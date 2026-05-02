@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>便签坞</title>
+  <link rel="stylesheet" href="float.css">
+  <style>
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+    }
+  </style>
+</head>
+<body>
+  <div class="titlebar">
+    <span class="title">便签坞</span>
+    <div class="btn-group">
+      <button class="btn-close" id="btn-close" title="关闭">✕</button>
+    </div>
+  </div>
+
+  <div class="dock-header">活跃贴子</div>
+
+  <div class="dock-panel" id="dock-list">
+    <div style="color:#585b70;font-size:12px;padding:10px;">暂无贴子</div>
+  </div>
+
+  <div class="dock-actions">
+    <button id="btn-hide-all">全部隐藏</button>
+    <button id="btn-show-all">全部显示</button>
+  </div>
+
+  <script>
+    document.getElementById('btn-close').onclick = () => window.close();
+    document.getElementById('btn-hide-all').onclick = () => window.snappin.hideAllWindows();
+    document.getElementById('btn-show-all').onclick = () => window.snappin.showAllWindows();
+
+    async function renderList() {
+      const list = await window.snappin.getWindowsList();
+      const container = document.getElementById('dock-list');
+
+      if (!list || list.length === 0) {
+        container.innerHTML = '<div style="color:#585b70;font-size:12px;padding:10px;">暂无贴子</div>';
+        return;
+      }
+
+      container.innerHTML = list.map(({ id, type }) => `
+        <div class="dock-item">
+          <span class="type-badge ${type === 'screenshot' ? 'type-screenshot' : 'type-note'}">
+            ${type === 'screenshot' ? '截图' : '文本'}
+          </span>
+          <span style="font-size:12px;color:#a6adc8;">贴子 #${id}</span>
+          <div class="item-actions">
+            <button onclick="window.snappin.dockShow(${id})">显示</button>
+            <button onclick="window.snappin.dockHide(${id})">隐藏</button>
+            <button onclick="window.snappin.dockClose(${id}); renderList();">关闭</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    window.snappin.onRefreshList(() => renderList());
+    renderList();
+  </script>
+</body>
+</html>

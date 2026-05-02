@@ -1,0 +1,290 @@
+/* ─── 浮窗通用样式 ────────────────────────────────────────────── */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+/* ─── 标题栏 ──────────────────────────────────────────────────── */
+.titlebar {
+  height: 28px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  background: rgba(30, 30, 46, 0.95);
+  -webkit-app-region: drag;
+  border-radius: 10px 10px 0 0;
+  user-select: none;
+  gap: 6px;
+}
+
+.titlebar .title {
+  flex: 1;
+  font-size: 12px;
+  color: #a6adc8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-app-region: drag;
+}
+
+.titlebar .btn-group {
+  display: flex;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar button {
+  width: 22px;
+  height: 18px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  -webkit-app-region: no-drag;
+}
+
+.btn-pin  { background: rgba(255,255,255,0.08); color: #fab387; }
+.btn-min  { background: rgba(255,255,255,0.08); color: #a6e3a1; }
+.btn-close{ background: rgba(255,255,255,0.08); color: #f38ba8; }
+
+.btn-pin:hover  { background: #fab387; color: #1e1e2e; }
+.btn-min:hover  { background: #a6e3a1; color: #1e1e2e; }
+.btn-close:hover{ background: #f38ba8; color: #1e1e2e; }
+
+.btn-pin.active { background: #fab387; color: #1e1e2e; }
+
+/* ─── 图片区域 ────────────────────────────────────────────────── */
+.img-area {
+  flex-shrink: 0;
+  overflow: auto;
+  background: #181825;
+  border-bottom: 1px solid #313244;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  max-height: 55%;
+}
+
+.img-area img {
+  max-width: 600px;
+  width: 100%;
+  height: auto;
+  display: block;
+  cursor: zoom-in;
+  user-select: none;
+}
+
+/* ─── OCR 文字区域 ───────────────────────────────────────────── */
+.ocr-area {
+  flex: 1;
+  background: #fff;
+  color: #333;
+  padding: 8px 10px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+
+.ocr-area.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+  gap: 8px;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ddd;
+  border-top-color: #666;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── 文本便签区域 ───────────────────────────────────────────── */
+.note-area {
+  flex: 1;
+  background: #fff;
+  color: #333;
+  padding: 10px;
+  font-size: 14px;
+  line-height: 1.7;
+  resize: none;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  overflow-y: auto;
+}
+
+/* ─── 分隔线 ─────────────────────────────────────────────────── */
+.divider {
+  height: 1px;
+  background: #313244;
+  flex-shrink: 0;
+}
+
+/* ─── 错误提示 ───────────────────────────────────────────────── */
+.ocr-error {
+  color: #f38ba8;
+  font-size: 12px;
+  text-align: center;
+  padding: 10px;
+}
+
+.ocr-error button {
+  margin-top: 6px;
+  padding: 4px 10px;
+  border: 1px solid #f38ba8;
+  background: transparent;
+  color: #f38ba8;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* ─── 快速输入弹窗 ───────────────────────────────────────────── */
+.quickinput-wrap {
+  background: rgba(30,30,46,0.97);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+  border: 1px solid #45475a;
+}
+
+.quickinput-wrap input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #cdd6f4;
+  font-size: 16px;
+  font-family: inherit;
+  caret-color: #cba6f7;
+}
+
+.quickinput-hint {
+  font-size: 11px;
+  color: #585b70;
+  margin-top: 6px;
+}
+
+/* ─── 拖拽区 ─────────────────────────────────────────────────── */
+.dropzone {
+  width: 28px;
+  height: 80px;
+  background: rgba(203,166,247,0.25);
+  border-radius: 0 8px 8px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+  writing-mode: vertical-rl;
+  font-size: 10px;
+  color: rgba(203,166,247,0.8);
+  user-select: none;
+}
+
+.dropzone.dragover {
+  background: rgba(203,166,247,0.5);
+}
+
+/* ─── 便签坞 ─────────────────────────────────────────────────── */
+.dock-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.dock-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  background: #181825;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.dock-item .type-badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.type-screenshot { background: #fab38720; color: #fab387; }
+.type-note       { background: #a6e3a120; color: #a6e3a1; }
+
+.dock-item .item-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.dock-item .item-actions button {
+  border: none;
+  background: rgba(255,255,255,0.07);
+  color: #a6adc8;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.dock-item .item-actions button:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+.dock-header {
+  padding: 8px 10px 4px;
+  font-size: 12px;
+  color: #585b70;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.dock-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid #313244;
+}
+
+.dock-actions button {
+  flex: 1;
+  padding: 6px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.07);
+  color: #a6adc8;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dock-actions button:hover { background: rgba(255,255,255,0.15); }
