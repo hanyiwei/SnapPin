@@ -1,7 +1,7 @@
 {
   "shortcuts": {
-    "screenshot": "Shift+Alt+3",
-    "newNote": "CommandOrControl+Shift+T"
+    "screenshot": "Alt+Shift+3",
+    "newNote": "Alt+Shift+4"
   },
   "autoPin": true,
   "maxImageWidth": 600

@@ -5,71 +5,24 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; }
-  body { background: transparent; cursor: crosshair; user-select: none; }
-  #bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: 1; }
-  #sel { position: absolute; border: 2px dashed #fff; background: transparent; display: none; z-index: 3; }
-  /* 四块遮罩拼成开窗效果 */
-  .mask-piece {
+  body { background: rgba(0,0,0,0.35); user-select: none; cursor: crosshair; }
+  #sel {
     position: absolute;
-    background: rgba(0,0,0,0.35);
-    z-index: 2;
-    pointer-events: none;
+    border: 2px dashed #fff;
+    background: transparent;
+    display: none;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
   }
-  #mask-top    { top: 0; left: 0; right: 0; }
-  #mask-bottom { left: 0; right: 0; bottom: 0; }
-  #mask-left   { left: 0; }
-  #mask-right  { right: 0; }
-  .mask-piece { display: none; }
-  .mask-piece.on { display: block; }
 </style>
 </head>
 <body>
-<img id="bg" src="" alt="">
-<div id="mask-top" class="mask-piece"></div>
-<div id="mask-bottom" class="mask-piece"></div>
-<div id="mask-left" class="mask-piece"></div>
-<div id="mask-right" class="mask-piece"></div>
 <div id="sel"></div>
 <script>
-  const bg = document.getElementById('bg');
+  const { ipcRenderer } = require('electron');
   const sel = document.getElementById('sel');
-  const maskTop = document.getElementById('mask-top');
-  const maskBottom = document.getElementById('mask-bottom');
-  const maskLeft = document.getElementById('mask-left');
-  const maskRight = document.getElementById('mask-right');
-  const pieces = [maskTop, maskBottom, maskLeft, maskRight];
+  let startX = 0, startY = 0;
 
-  let startX = 0, startY = 0, imgDataUrl = '';
-
-  // 接收主进程发来的 display 信息
-  window.snappin.onCaptureDisplayInfo(async (info) => {
-    imgDataUrl = await window.snappin.captureScreen(info.displayId, info.width, info.height);
-    if (!imgDataUrl) {
-      window.snappin.captureCancel();
-      return;
-    }
-    bg.src = imgDataUrl;
-    bg.onload = () => {
-      pieces.forEach(p => p.classList.add('on'));
-      window.snappin.captureReady();
-    };
-  });
-
-  function updateMask(x, y, w, h) {
-    if (w <= 0 || h <= 0) {
-      pieces.forEach(p => p.style.display = 'none');
-      return;
-    }
-    pieces.forEach(p => p.style.display = 'block');
-    maskTop.style.height = y + 'px';
-    maskBottom.style.top = (y + h) + 'px';
-    maskLeft.style.top = y + 'px';
-    maskLeft.style.width = x + 'px';
-    maskLeft.style.height = h + 'px';
-    maskRight.style.top = y + 'px';
-    maskRight.style.left = (x + w) + 'px';
-    maskRight.style.height = h + 'px';
-  }
+  ipcRenderer.send('capture:ready');
 
   document.addEventListener('mousedown', (e) => {
     startX = e.clientX;
@@ -91,14 +44,11 @@
     sel.style.top = y + 'px';
     sel.style.width = w + 'px';
     sel.style.height = h + 'px';
-    updateMask(x, y, w, h);
   });
 
   document.addEventListener('mouseup', () => {
     if (sel.style.display !== 'block') return;
     sel.style.display = 'none';
-    pieces.forEach(p => p.style.display = 'none');
-
     const rect = {
       x: parseInt(sel.style.left),
       y: parseInt(sel.style.top),
@@ -106,22 +56,15 @@
       height: parseInt(sel.style.height)
     };
     if (rect.width < 10 || rect.height < 10) {
-      window.snappin.captureCancel();
+      ipcRenderer.send('capture:cancel');
       return;
     }
-    // 裁剪图片（bg 是物理像素截图，需按 devicePixelRatio 换算源坐标）
-    const dpr = window.devicePixelRatio || 1;
-    const canvas = document.createElement('canvas');
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(bg, rect.x * dpr, rect.y * dpr, rect.width * dpr, rect.height * dpr, 0, 0, rect.width, rect.height);
-    window.snappin.captureDone({ rect, imgDataUrl: canvas.toDataURL('image/png') });
+    // 只发 rect，截图由主进程用 screenshot-desktop 完成
+    ipcRenderer.send('capture:done', { rect });
   });
 
-  // ESC 取消
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') window.snappin.captureCancel();
+    if (e.key === 'Escape') ipcRenderer.send('capture:cancel');
   });
 </script>
 </body>

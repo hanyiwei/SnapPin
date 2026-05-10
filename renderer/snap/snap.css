@@ -1,12 +1,39 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; user-select: none; }
 
 #img {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: fill;
-  /* 1px 极细浅灰描边，在浅色背景下区分边界 */
-  outline: 1px solid rgba(128, 128, 128, 0.35);
+  object-fit: contain;
+  outline: 2px solid rgba(128, 128, 128, 0.40);
   outline-offset: -1px;
+}
+
+#toast {
+  position: absolute;
+  bottom: 8px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.72);
+  color: #fff;
+  font-size: 12px;
+  padding: 5px 14px;
+  border-radius: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 20;
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-family: -apple-system, "Microsoft YaHei", sans-serif;
+}
+#toast.show { opacity: 1; }
+
+#resize-handle {
+  position: absolute;
+  bottom: 0; right: 0;
+  width: 14px; height: 14px;
+  cursor: nwse-resize;
+  z-index: 10;
+  /* 视觉提示：小三角形 */
+  background: linear-gradient(135deg, transparent 50%, rgba(128,128,128,0.3) 50%);
 }

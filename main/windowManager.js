@@ -3,26 +3,25 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const store = require('./store');
+const { execFileSync } = require('child_process');
 
-const SNAP = 8; // 磁力吸附阈值（像素）
+const SNAP = 8;
 const windows = new Map();
+const movingWindows = new Set();
 let winIdCounter = Date.now();
 
 function nextId() { return ++winIdCounter; }
 
-// ─── 磁力吸附算法 ──────────────────────────────────────────────
 function applyMagneticSnap(movingId, x, y, w, h) {
   const display = screen.getDisplayNearestPoint({ x, y });
   const wa = display.workArea;
   let sx = x, sy = y;
 
-  // 屏幕边缘吸附
   if (Math.abs(sx - wa.x) < SNAP) sx = wa.x;
   if (Math.abs(sy - wa.y) < SNAP) sy = wa.y;
   if (Math.abs(sx + w - wa.x - wa.width) < SNAP) sx = wa.x + wa.width - w;
   if (Math.abs(sy + h - wa.y - wa.height) < SNAP) sy = wa.y + wa.height - h;
 
-  // 与其他贴子边缘吸附
   for (const [id, entry] of windows) {
     if (id === movingId) continue;
     if (entry.win.isDestroyed()) continue;
@@ -53,21 +52,17 @@ function applyMagneticSnap(movingId, x, y, w, h) {
   return { x: sx, y: sy };
 }
 
-// ─── 重叠推开排斥 ──────────────────────────────────────────────
 function resolveOverlap(movingId, mx, my, mw, mh) {
-  // 收集所有需要检查的窗口
   for (const [id, entry] of windows) {
     if (id === movingId) continue;
     if (entry.win.isDestroyed()) continue;
     const [ox, oy] = entry.win.getPosition();
     const [ow, oh] = entry.win.getSize();
 
-    // 检测是否重叠
     const overlapX = Math.max(0, Math.min(mx + mw, ox + ow) - Math.max(mx, ox));
     const overlapY = Math.max(0, Math.min(my + mh, oy + oh) - Math.max(my, oy));
     if (overlapX <= 0 || overlapY <= 0) continue;
 
-    // 计算推开方向：选择重叠最小的方向推开其他窗口
     const gapLeft   = (ox + ow) - mx;
     const gapRight  = (mx + mw) - ox;
     const gapTop    = (oy + oh) - my;
@@ -85,9 +80,8 @@ function resolveOverlap(movingId, mx, my, mw, mh) {
     const newOY = oy + pushY;
     const snapped = applyMagneticSnap(id, newOX, newOY, ow, oh);
 
-    // 约束在屏幕内
-    const display = screen.getDisplayNearestPoint({ x: snapped.x, y: snapped.y });
-    const wa = display.workArea;
+    const d = screen.getDisplayNearestPoint({ x: snapped.x, y: snapped.y });
+    const wa = d.workArea;
     const cx = Math.max(wa.x, Math.min(snapped.x, wa.x + wa.width - ow));
     const cy = Math.max(wa.y, Math.min(snapped.y, wa.y + wa.height - oh));
 
@@ -95,16 +89,19 @@ function resolveOverlap(movingId, mx, my, mw, mh) {
   }
 }
 
-// ─── 层级管理：将窗口提升到最上层 ──────────────────────────────
 function bringToTop(winId) {
   const entry = windows.get(winId);
   if (!entry || entry.win.isDestroyed()) return;
   entry.win.setAlwaysOnTop(true);
 }
 
-// ─── 截图选区窗口 ──────────────────────────────────────────────
+// ─── 截图选区 ──────────────────────────────────────────────────
+let captureInProgress = false;
+
 function startSnapCapture() {
-  // 隐藏所有 SnapPin 贴子
+  if (captureInProgress) return;
+  captureInProgress = true;
+
   const visibleWins = [];
   for (const [, entry] of windows) {
     if (!entry.win.isDestroyed() && entry.win.isVisible()) {
@@ -113,72 +110,111 @@ function startSnapCapture() {
     }
   }
 
-  setTimeout(() => {
-    const cursorPoint = screen.getCursorScreenPoint();
-    const display = screen.getDisplayNearestPoint(cursorPoint);
-    const { width, height, x: dx, y: dy } = display.bounds;
-    const sf = display.scaleFactor;
+  const cursorPoint = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cursorPoint);
+  const { width, height, x: dx, y: dy } = display.bounds;
+  const sf = display.scaleFactor;
 
-    const win = new BrowserWindow({
-      x: dx, y: dy, width, height,
-      frame: false, transparent: true,
-      alwaysOnTop: true, skipTaskbar: true,
-      resizable: false, movable: false, show: false,
-      webPreferences: {
-        preload: path.join(__dirname, '../preload/preload.js'),
-        contextIsolation: true
-      }
-    });
-
-    if (process.platform === 'darwin') {
-      win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-      win.setAlwaysOnTop(true, 'screen-saver');
+  const win = new BrowserWindow({
+    x: dx, y: dy, width, height,
+    frame: false, transparent: true,
+    alwaysOnTop: true, skipTaskbar: true,
+    resizable: false, movable: false,
+    show: false,
+    webPreferences: {
+      contextIsolation: false,
+      nodeIntegration: true,
+      sandbox: false
     }
+  });
 
-    win.loadFile(path.join(__dirname, '../renderer/snap/capture.html'));
+  if (process.platform === 'darwin') {
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    win.setAlwaysOnTop(true, 'screen-saver');
+  }
 
-    win.webContents.once('did-finish-load', () => {
-      win.webContents.send('capture:display-info', {
-        displayId: String(display.id),
-        width: Math.round(width * sf),
-        height: Math.round(height * sf)
-      });
+  win.loadFile(path.join(__dirname, '../renderer/snap/capture.html'));
+
+  win.webContents.once('did-finish-load', () => {
+    win.webContents.send('capture:display-info', {
+      displayId: String(display.id),
+      width: Math.round(width * sf),
+      height: Math.round(height * sf)
     });
+  });
 
-    const onReady = () => { if (!win.isDestroyed()) win.showInactive(); };
-    ipcMain.once('capture:ready', onReady);
+  const restoreWins = () => visibleWins.forEach(w => { if (!w.isDestroyed()) w.show(); });
 
-    const restoreWins = () => visibleWins.forEach(w => { if (!w.isDestroyed()) w.show(); });
+  const cleanup = () => {
+    captureInProgress = false;
+    ipcMain.removeListener('capture:ready', onReady);
+    ipcMain.removeListener('capture:done', onDone);
+    ipcMain.removeListener('capture:cancel', onCancel);
+  };
 
-    ipcMain.once('capture:done', (event, { rect, imgDataUrl }) => {
-      ipcMain.removeListener('capture:ready', onReady);
+  const onReady = () => {
+    if (!win.isDestroyed()) { win.show(); win.focus(); }
+  };
+  ipcMain.once('capture:ready', onReady);
+
+  const onDone = async (_e, { rect }) => {
+    try {
+      cleanup();
       win.destroy();
       restoreWins();
 
-      const base64 = imgDataUrl.split(',')[1];
+      const dpr = sf;
       const outPath = path.join(os.tmpdir(), `snappin-${Date.now()}.png`);
-      fs.writeFileSync(outPath, Buffer.from(base64, 'base64'));
 
-      // 写入系统剪贴板
-      try {
-        clipboard.writeImage(nativeImage.createFromDataURL(imgDataUrl));
-      } catch (_) {}
+      if (process.platform === 'win32') {
+        const srcX = Math.round((display.bounds.x + rect.x) * dpr);
+        const srcY = Math.round((display.bounds.y + rect.y) * dpr);
+        const srcW = Math.round(rect.width * dpr);
+        const srcH = Math.round(rect.height * dpr);
+        const savePath = outPath.replace(/\\/g, '\\\\');
+        const psScript = `Add-Type -AssemblyName System.Drawing;$b=New-Object System.Drawing.Bitmap(${srcW},${srcH});$g=[System.Drawing.Graphics]::FromImage($b);$g.CopyFromScreen(${srcX},${srcY},0,0,$b.Size);$b.Save('${savePath}');$g.Dispose();$b.Dispose()`;
+        execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], { timeout: 8000 });
+      } else {
+        const tmpFile = path.join(os.tmpdir(), `snappin-full-${Date.now()}.png`);
+        const { execSync } = require('child_process');
+        execSync(`screencapture -x "${tmpFile}"`);
+        const fullImg = nativeImage.createFromPath(tmpFile);
+        const cropped = fullImg.crop({
+          x: Math.round(rect.x * dpr),
+          y: Math.round(rect.y * dpr),
+          width: Math.round(rect.width * dpr),
+          height: Math.round(rect.height * dpr)
+        });
+        fs.writeFileSync(outPath, cropped.toPNG());
+        fs.unlinkSync(tmpFile);
+      }
 
-      const globalRect = {
+      if (!fs.existsSync(outPath)) {
+        console.error('[SnapPin] screenshot file not created');
+        return;
+      }
+
+      const img = nativeImage.createFromPath(outPath);
+      try { clipboard.writeImage(img); } catch (_) {}
+
+      createSnapWindow(outPath, {
         x: rect.x + display.bounds.x,
         y: rect.y + display.bounds.y,
         width: rect.width,
         height: rect.height
-      };
-      createSnapWindow(outPath, globalRect);
-    });
+      });
+    } catch (e) {
+      console.error('[SnapPin] capture:done error:', e);
+    }
+  };
+  ipcMain.on('capture:done', onDone);
 
-    ipcMain.once('capture:cancel', () => {
-      ipcMain.removeListener('capture:ready', onReady);
-      win.destroy();
-      restoreWins();
-    });
-  }, 150);
+  const onCancel = () => {
+    cleanup();
+    win.destroy();
+    restoreWins();
+  };
+  ipcMain.on('capture:cancel', onCancel);
 }
 
 // ─── 截图贴窗口 ────────────────────────────────────────────────
@@ -193,7 +229,7 @@ function createSnapWindow(imgPath, rect) {
     x: px, y: py, width: w, height: h,
     frame: false, transparent: true,
     hasShadow: false, alwaysOnTop: true,
-    skipTaskbar: false, resizable: false,
+    skipTaskbar: true, resizable: true,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
@@ -201,14 +237,38 @@ function createSnapWindow(imgPath, rect) {
     }
   });
 
-  win.loadFile(path.join(__dirname, '../renderer/snap/snap.html'));
+  // 通过 query 传图片路径，页面加载时就开始加载图片
+  win.loadFile(path.join(__dirname, '../renderer/snap/snap.html'), {
+    query: { id: String(id), img: imgPath }
+  });
 
-  win.once('ready-to-show', () => {
-    win.show();
-    win.webContents.send('snap:init', { id, imgPath });
+  let snapAspectRatio = w / h;
+
+  const onAspectRatio = (_e, ratio) => {
+    snapAspectRatio = parseFloat(ratio);
+  };
+  const onSnapReady = () => {
+    if (!win.isDestroyed()) win.show();
+  };
+  ipcMain.on('snap:aspect-ratio', onAspectRatio);
+  ipcMain.on('snap:ready', onSnapReady);
+
+  // resize 时手动保持等比，移动期间跳过
+  win.on('resize', () => {
+    if (movingWindows.has(id)) return;
+    const [rw, rh] = win.getSize();
+    const expectedH = Math.round(rw / snapAspectRatio);
+    if (Math.abs(rh - expectedH) > 1) {
+      win.setSize(rw, expectedH);
+    }
+    const list = store.get('windows', []);
+    const item = list.find(w => w.id === id);
+    if (item) { item.width = rw; item.height = expectedH; store.set('windows', list); }
   });
 
   win.on('closed', () => {
+    ipcMain.removeListener('snap:aspect-ratio', onAspectRatio);
+    ipcMain.removeListener('snap:ready', onSnapReady);
     windows.delete(id);
     store.set('windows', store.get('windows', []).filter(w => w.id !== id));
   });
@@ -231,7 +291,6 @@ function createNoteWindow(initialText, posX, posY) {
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
   const { width: nw, height: nh } = calcNoteSize(text);
 
-  // 位置优先使用传入坐标，其次从 store 恢复时居中，快捷键创建时跟随鼠标
   let px, py;
   if (posX != null && posY != null) {
     px = posX;
@@ -246,7 +305,7 @@ function createNoteWindow(initialText, posX, posY) {
     x: px, y: py, width: nw, height: nh,
     frame: false, transparent: true,
     hasShadow: false, alwaysOnTop: true,
-    skipTaskbar: false, resizable: false,
+    skipTaskbar: true, resizable: false,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
@@ -291,7 +350,7 @@ function persistNote(id, text, x, y, width, height) {
   store.set('windows', list);
 }
 
-// ─── 快捷输入窗口（新建文本贴用）────────────────────────────────
+// ─── 快捷输入窗口 ───────────────────────────────────────────────
 function showQuickInput() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
@@ -321,16 +380,14 @@ function showQuickInput() {
   ipcMain.once('quickinput:cancel', () => win.close());
 }
 
-// ─── IPC 注册 ──────────────────────────────────────────────────
+// ─── IPC ───────────────────────────────────────────────────────
 function setupIPC() {
-  // 内容变更（文本贴编辑自动保存）
   ipcMain.on('note:content-change', (_e, { id, text }) => {
     const list = store.get('windows', []);
     const entry = list.find(w => w.id === id);
     if (entry) { entry.text = text; store.set('windows', list); }
   });
 
-  // 拖拽移动：增量位移 + 吸附 + 推开
   ipcMain.on('win:move', (_e, { id, dx, dy }) => {
     const entry = windows.get(id);
     if (!entry || entry.win.isDestroyed()) return;
@@ -339,34 +396,31 @@ function setupIPC() {
     const nx = x + dx;
     const ny = y + dy;
 
-    // 先移动
+    movingWindows.add(id);
+    clearTimeout(entry._moveTimer);
+    entry._moveTimer = setTimeout(() => movingWindows.delete(id), 150);
+
     entry.win.setPosition(Math.round(nx), Math.round(ny));
 
-    // 磁力吸附
     const snapped = applyMagneticSnap(id, nx, ny, w, h);
     entry.win.setPosition(Math.round(snapped.x), Math.round(snapped.y));
 
-    // 推开重叠
     const [sx2, sy2] = entry.win.getPosition();
     resolveOverlap(id, sx2, sy2, w, h);
 
-    // 持久化
     const [fx, fy] = entry.win.getPosition();
     const list = store.get('windows', []);
     const item = list.find(wi => wi.id === id);
     if (item) { item.x = fx; item.y = fy; store.set('windows', list); }
   });
 
-  // 提升层级
   ipcMain.on('win:bring-to-top', (_e, id) => bringToTop(id));
 
-  // 关闭
   ipcMain.on('win:close', (_e, id) => {
     const entry = windows.get(id);
     if (entry && !entry.win.isDestroyed()) entry.win.close();
   });
 
-  // 便签坞 / 托盘
   ipcMain.handle('dock:get-windows', () =>
     [...windows.values()]
       .filter(e => !e.win.isDestroyed())
@@ -383,14 +437,10 @@ function setupIPC() {
     if (entry && !entry.win.isDestroyed()) entry.win.hide();
   });
 
-  // 新建文本贴（从便签坞面板触发）
   ipcMain.on('note:create', () => showQuickInput());
-
-  // 启动截图（从便签坞面板触发）
   ipcMain.on('snap:start-capture', () => startSnapCapture());
 }
 
-// ─── 全部显示/隐藏 ─────────────────────────────────────────────
 function hideAll() {
   for (const [, entry] of windows) {
     if (!entry.win.isDestroyed()) entry.win.hide();
@@ -402,7 +452,6 @@ function showAll() {
   }
 }
 
-// ─── 恢复上次会话 ──────────────────────────────────────────────
 function restoreWindows() {
   const list = store.get('windows', []);
   for (const entry of list) {

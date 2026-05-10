@@ -1,23 +1,15 @@
-const { contextBridge, ipcRenderer, desktopCapturer } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('snappin', {
   // ── 截图选区 ──────────────────────────────────────────────
-  startCapture: () => ipcRenderer.send('snap:start-capture'),
   onCaptureDisplayInfo: (cb) => ipcRenderer.on('capture:display-info', (_e, info) => cb(info)),
-  captureScreen: async (displayId, w, h) => {
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width: w, height: h }
-    });
-    const source = sources.find(s => s.display_id === String(displayId)) || sources[0];
-    return source ? source.thumbnail.toDataURL() : null;
-  },
   captureDone: (data) => ipcRenderer.send('capture:done', data),
   captureCancel: () => ipcRenderer.send('capture:cancel'),
   captureReady: () => ipcRenderer.send('capture:ready'),
 
   // ── 截图贴 ────────────────────────────────────────────────
-  onSnapInit: (cb) => ipcRenderer.on('snap:init', (_e, data) => cb(data)),
+  snapReady: () => ipcRenderer.send('snap:ready'),
+  snapAspectRatio: (ratio) => ipcRenderer.send('snap:aspect-ratio', ratio),
 
   // ── 文本贴 ────────────────────────────────────────────────
   onNoteInit: (cb) => ipcRenderer.on('note:init', (_e, data) => cb(data)),

@@ -11,7 +11,7 @@ function createTray(wm) {
       icon = icon.resize({ width: 22, height: 22 });
       icon.setTemplateImage(true);
     } else {
-      icon = icon.resize({ width: 64, height: 64 });
+      // 不 resize，系统自行处理高分屏缩放
     }
   } catch {
     icon = nativeImage.createEmpty();

@@ -7,7 +7,7 @@ let saveTimer = null;
 
 window.snappin.onNoteInit((data) => {
   winId = data.id;
-  if (data.text) content.textContent = data.text;
+  if (data.text) content.innerText = data.text;
   // 把光标放到末尾
   if (data.text) {
     const range = document.createRange();
@@ -23,7 +23,7 @@ window.snappin.onNoteInit((data) => {
 content.addEventListener('input', () => {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    window.snappin.contentChange(winId, content.textContent);
+    window.snappin.contentChange(winId, content.innerText);
   }, 2000);
 });
 
@@ -61,6 +61,6 @@ closeBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   // 关闭前保存当前内容
   clearTimeout(saveTimer);
-  window.snappin.contentChange(winId, content.textContent);
+  window.snappin.contentChange(winId, content.innerText);
   window.snappin.closeWindow(winId);
 });
