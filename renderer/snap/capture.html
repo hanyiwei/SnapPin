@@ -109,12 +109,13 @@
       window.snappin.captureCancel();
       return;
     }
-    // 裁剪图片
+    // 裁剪图片（bg 是物理像素截图，需按 devicePixelRatio 换算源坐标）
+    const dpr = window.devicePixelRatio || 1;
     const canvas = document.createElement('canvas');
     canvas.width = rect.width;
     canvas.height = rect.height;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(bg, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
+    ctx.drawImage(bg, rect.x * dpr, rect.y * dpr, rect.width * dpr, rect.height * dpr, 0, 0, rect.width, rect.height);
     window.snappin.captureDone({ rect, imgDataUrl: canvas.toDataURL('image/png') });
   });
 

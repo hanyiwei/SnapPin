@@ -3,7 +3,7 @@ let winId = 0;
 
 window.snappin.onSnapInit((data) => {
   winId = data.id;
-  img.src = 'file://' + data.imgPath.replace(/\\/g, '/');
+  img.src = 'file:///' + data.imgPath.replace(/\\/g, '/').replace(/^([A-Z]):/i, '$1:');
 });
 
 // 点击任意位置提升层级

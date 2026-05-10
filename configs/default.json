@@ -1,6 +1,6 @@
 {
   "shortcuts": {
-    "screenshot": "CommandOrControl+Shift+A",
+    "screenshot": "Shift+Alt+3",
     "newNote": "CommandOrControl+Shift+T"
   },
   "autoPin": true,

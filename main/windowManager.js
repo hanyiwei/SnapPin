@@ -36,7 +36,7 @@ function applyMagneticSnap(movingId, x, y, w, h) {
       { test: Math.abs(sx + w - (ox + ow)),   val: ox + ow - w },
     ];
     for (const e of edges) {
-      if (e.test < SNAP && e.test < Math.abs(sx - e.val)) sx = e.val;
+      if (e.test < SNAP) sx = e.val;
     }
 
     const yEdges = [
@@ -46,7 +46,7 @@ function applyMagneticSnap(movingId, x, y, w, h) {
       { test: Math.abs(sy + h - (oy + oh)),   val: oy + oh - h },
     ];
     for (const e of yEdges) {
-      if (e.test < SNAP && e.test < Math.abs(sy - e.val)) sy = e.val;
+      if (e.test < SNAP) sy = e.val;
     }
   }
 

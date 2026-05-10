@@ -31,6 +31,9 @@ function createTray(wm) {
     {
       label: '新建文本贴', click: () => wm.showQuickInput()
     },
+    {
+      label: '新建截图贴', click: () => wm.startSnapCapture()
+    },
     { type: 'separator' },
     {
       label: '退出', click: () => { require('electron').app.quit(); }
