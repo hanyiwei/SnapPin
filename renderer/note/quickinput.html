@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, "Microsoft YaHei", sans-serif;
+  }
+  #box {
+    width: 100%; height: 100%;
+    background: #FFF9C4;
+    border-radius: 10px;
+    display: flex; align-items: center;
+    padding: 0 16px;
+  }
+  #input {
+    width: 100%; height: 36px; border: none; outline: none;
+    background: transparent; font-size: 16px; color: #333;
+    font-family: inherit;
+  }
+  #input::placeholder { color: #bbb; }
+</style>
+</head>
+<body>
+<div id="box">
+  <input id="input" type="text" placeholder="输入文本，回车创建贴子…" autofocus>
+</div>
+<script>
+  const input = document.getElementById('input');
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      window.snappin.quickInputConfirm(input.value);
+    } else if (e.key === 'Escape') {
+      window.snappin.quickInputCancel();
+    }
+  });
+  // 失焦取消
+  input.addEventListener('blur', () => {
+    setTimeout(() => window.snappin.quickInputCancel(), 100);
+  });
+</script>
+</body>
+</html>

@@ -1,30 +1,23 @@
 const { globalShortcut } = require('electron');
-const store = require('./store');
+const config = require('../configs/default.json');
+
+let registered = [];
 
 function registerShortcuts(wm) {
-  const shortcuts = store.get('shortcuts');
-
-  // 截图
-  globalShortcut.register(shortcuts.screenshot, () => {
-    wm.createCaptureWindow((err, imgPath, rect) => {
-      if (!err) wm.createScreenshotWindow(imgPath, rect);
-    });
-  });
-
-  // 新建文本便签
-  globalShortcut.register(shortcuts.newNote, () => {
-    wm.createQuickInputWindow();
-  });
-
-  // 打开/关闭便签坞
-  globalShortcut.register(shortcuts.toggleDock, () => {
-    const { toggleDock } = require('./tray');
-    toggleDock();
-  });
+  const keys = config.shortcuts;
+  if (keys.screenshot) {
+    globalShortcut.register(keys.screenshot, () => wm.startSnapCapture());
+    registered.push(keys.screenshot);
+  }
+  if (keys.newNote) {
+    globalShortcut.register(keys.newNote, () => wm.showQuickInput());
+    registered.push(keys.newNote);
+  }
 }
 
 function unregisterAll() {
   globalShortcut.unregisterAll();
+  registered = [];
 }
 
 module.exports = { registerShortcuts, unregisterAll };

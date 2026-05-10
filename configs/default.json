@@ -1,8 +1,7 @@
 {
   "shortcuts": {
     "screenshot": "CommandOrControl+Shift+A",
-    "newNote": "CommandOrControl+Shift+T",
-    "toggleDock": "CommandOrControl+Shift+B"
+    "newNote": "CommandOrControl+Shift+T"
   },
   "autoPin": true,
   "maxImageWidth": 600
