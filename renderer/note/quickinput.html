@@ -39,7 +39,11 @@
   });
   // 失焦取消
   input.addEventListener('blur', () => {
-    setTimeout(() => window.snappin.quickInputCancel(), 100);
+    if (input.value.trim()) {
+      window.snappin.quickInputConfirm(input.value);
+    } else {
+      window.snappin.quickInputCancel();
+    }
   });
 </script>
 </body>

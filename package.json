@@ -5,32 +5,43 @@
   "main": "main/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux"
+    "ico": "node scripts/generate-ico.js",
+    "build": "npm run ico && electron-builder",
+    "build:win": "npm run ico && electron-builder --win",
+    "build:mac": "npm run ico && electron-builder --mac",
+    "build:linux": "npm run ico && electron-builder --linux"
   },
   "dependencies": {
     "electron-store": "^8.1.0"
   },
   "devDependencies": {
     "electron": "^28.0.0",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.9.1",
+    "jimp": "^0.22.12"
   },
   "build": {
     "appId": "com.snappin.app",
     "productName": "SnapPin",
-    "icon": "assets/icon.png",
+    "icon": "resources/icon.ico",
     "files": [
       "main/**/*",
       "preload/**/*",
       "renderer/**/*",
       "assets/**/*",
+      "resources/**/*",
       "configs/**/*",
       "package.json"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "installerHeaderIcon": "resources/icon.ico"
     },
     "mac": {
       "target": "dmg",
@@ -39,5 +50,10 @@
     "linux": {
       "target": "AppImage"
     }
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hanyiwei/SnapPin.git"
+  },
+  "author": "hanyiwei"
 }

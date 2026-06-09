@@ -93,6 +93,7 @@ function bringToTop(winId) {
   const entry = windows.get(winId);
   if (!entry || entry.win.isDestroyed()) return;
   entry.win.setAlwaysOnTop(true);
+  entry.win.moveTop();
 }
 
 // ─── 截图选区 ──────────────────────────────────────────────────
@@ -120,6 +121,7 @@ function startSnapCapture() {
     frame: false, transparent: true,
     alwaysOnTop: true, skipTaskbar: true,
     resizable: false, movable: false,
+    icon: path.join(__dirname, '../assets/icon.png'),
     show: false,
     webPreferences: {
       contextIsolation: false,
@@ -135,14 +137,6 @@ function startSnapCapture() {
 
   win.loadFile(path.join(__dirname, '../renderer/snap/capture.html'));
 
-  win.webContents.once('did-finish-load', () => {
-    win.webContents.send('capture:display-info', {
-      displayId: String(display.id),
-      width: Math.round(width * sf),
-      height: Math.round(height * sf)
-    });
-  });
-
   const restoreWins = () => visibleWins.forEach(w => { if (!w.isDestroyed()) w.show(); });
 
   const cleanup = () => {
@@ -151,6 +145,8 @@ function startSnapCapture() {
     ipcMain.removeListener('capture:done', onDone);
     ipcMain.removeListener('capture:cancel', onCancel);
   };
+
+  win.on('closed', cleanup); // safety: unstuck if window closed unexpectedly
 
   const onReady = () => {
     if (!win.isDestroyed()) { win.show(); win.focus(); }
@@ -171,9 +167,12 @@ function startSnapCapture() {
         const srcY = Math.round((display.bounds.y + rect.y) * dpr);
         const srcW = Math.round(rect.width * dpr);
         const srcH = Math.round(rect.height * dpr);
-        const savePath = outPath.replace(/\\/g, '\\\\');
-        const psScript = `Add-Type -AssemblyName System.Drawing;$b=New-Object System.Drawing.Bitmap(${srcW},${srcH});$g=[System.Drawing.Graphics]::FromImage($b);$g.CopyFromScreen(${srcX},${srcY},0,0,$b.Size);$b.Save('${savePath}');$g.Dispose();$b.Dispose()`;
-        execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], { timeout: 8000 });
+        const psScript = `Add-Type -AssemblyName System.Drawing;$b=New-Object System.Drawing.Bitmap(${srcW},${srcH});$g=[System.Drawing.Graphics]::FromImage($b);$g.CopyFromScreen(${srcX},${srcY},0,0,$b.Size);$b.Save('${outPath.replace(/'/g, "''")}');$g.Dispose();$b.Dispose()`;
+        execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', psScript], { timeout: 8000 });
+        if (fs.existsSync(outPath)) {
+          const img = nativeImage.createFromPath(outPath);
+          try { clipboard.writeImage(img); } catch (_) {}
+        }
       } else {
         const tmpFile = path.join(os.tmpdir(), `snappin-full-${Date.now()}.png`);
         const { execSync } = require('child_process');
@@ -187,15 +186,13 @@ function startSnapCapture() {
         });
         fs.writeFileSync(outPath, cropped.toPNG());
         fs.unlinkSync(tmpFile);
+        try { clipboard.writeImage(cropped); } catch (_) {}
       }
 
       if (!fs.existsSync(outPath)) {
         console.error('[SnapPin] screenshot file not created');
         return;
       }
-
-      const img = nativeImage.createFromPath(outPath);
-      try { clipboard.writeImage(img); } catch (_) {}
 
       createSnapWindow(outPath, {
         x: rect.x + display.bounds.x,
@@ -220,16 +217,31 @@ function startSnapCapture() {
 // ─── 截图贴窗口 ────────────────────────────────────────────────
 function createSnapWindow(imgPath, rect) {
   const id = nextId();
-  const w = rect ? Math.round(rect.width) : 400;
-  const h = rect ? Math.round(rect.height) : 300;
-  const px = rect ? Math.round(rect.x) : 200;
-  const py = rect ? Math.round(rect.y) : 200;
+  const MIN_W = 100, MIN_H = 100;
+  let w = rect ? Math.round(rect.width) : 400;
+  let h = rect ? Math.round(rect.height) : 300;
+  let px = rect ? Math.round(rect.x) : 200;
+  let py = rect ? Math.round(rect.y) : 200;
+
+  // 选区过小时等比放大到最小尺寸
+  if (w < MIN_W || h < MIN_H) {
+    const scale = Math.max(MIN_W / w, MIN_H / h);
+    const nw = Math.round(w * scale);
+    const nh = Math.round(h * scale);
+    px = Math.round(px - (nw - w) / 2);
+    py = Math.round(py - (nh - h) / 2);
+    w = nw;
+    h = nh;
+  }
 
   const win = new BrowserWindow({
     x: px, y: py, width: w, height: h,
     frame: false, transparent: true,
     hasShadow: false, alwaysOnTop: true,
     skipTaskbar: true, resizable: true,
+    minWidth: 100, minHeight: 100,
+    maxWidth: 1600, maxHeight: 1200,
+    icon: path.join(__dirname, '../assets/icon.png'),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
@@ -244,20 +256,37 @@ function createSnapWindow(imgPath, rect) {
 
   let snapAspectRatio = w / h;
 
-  const onAspectRatio = (_e, ratio) => {
+  const onAspectRatio = (_e, { id: msgId, ratio }) => {
+    if (msgId !== id) return;
     snapAspectRatio = parseFloat(ratio);
+    const e = windows.get(id);
+    if (e) e._aspectRatio = snapAspectRatio;
   };
-  const onSnapReady = () => {
+  const onSnapReady = (_e, msgId) => {
+    if (msgId !== id) return;
     if (!win.isDestroyed()) win.show();
   };
   ipcMain.on('snap:aspect-ratio', onAspectRatio);
   ipcMain.on('snap:ready', onSnapReady);
 
-  // resize 时手动保持等比，移动期间跳过
+  // resize 时保持等比；拖拽中主动恢复原始尺寸
   win.on('resize', () => {
-    if (movingWindows.has(id)) return;
     const [rw, rh] = win.getSize();
-    const expectedH = Math.round(rw / snapAspectRatio);
+    const entry = windows.get(id);
+
+    // 拖拽中：DWM 可能改尺寸 → 立刻恢复
+    if (entry && entry._dragSize) {
+      const [dw, dh] = entry._dragSize;
+      if (rw !== dw || rh !== dh) {
+        win.setSize(dw, dh);
+      }
+      return;
+    }
+
+    if (movingWindows.has(id)) return;
+    const e = windows.get(id);
+    const ar = (e && e._aspectRatio) || snapAspectRatio;
+    const expectedH = Math.round(rw / ar);
     if (Math.abs(rh - expectedH) > 1) {
       win.setSize(rw, expectedH);
     }
@@ -271,9 +300,10 @@ function createSnapWindow(imgPath, rect) {
     ipcMain.removeListener('snap:ready', onSnapReady);
     windows.delete(id);
     store.set('windows', store.get('windows', []).filter(w => w.id !== id));
+    try { fs.unlinkSync(imgPath); } catch (_) {}
   });
 
-  windows.set(id, { id, type: 'snap', win });
+  windows.set(id, { id, type: 'snap', win, _aspectRatio: snapAspectRatio });
   persistSnap(id, imgPath, px, py, w, h);
   return id;
 }
@@ -305,7 +335,10 @@ function createNoteWindow(initialText, posX, posY) {
     x: px, y: py, width: nw, height: nh,
     frame: false, transparent: true,
     hasShadow: false, alwaysOnTop: true,
-    skipTaskbar: true, resizable: false,
+    skipTaskbar: true, resizable: true,
+    minWidth: 100, minHeight: 100,
+    maxWidth: 1200, maxHeight: 900,
+    icon: path.join(__dirname, '../assets/icon.png'),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
@@ -318,6 +351,25 @@ function createNoteWindow(initialText, posX, posY) {
   win.once('ready-to-show', () => {
     win.show();
     win.webContents.send('note:init', { id, text });
+  });
+
+  // resize 时仅持久化，不做等比约束；拖拽中 DWM 可能改尺寸，立刻恢复
+  win.on('resize', () => {
+    const [rw, rh] = win.getSize();
+    const entry = windows.get(id);
+
+    if (entry && entry._dragSize) {
+      const [dw, dh] = entry._dragSize;
+      if (rw !== dw || rh !== dh) {
+        win.setSize(dw, dh);
+      }
+      return;
+    }
+
+    if (movingWindows.has(id)) return;
+    const list = store.get('windows', []);
+    const item = list.find(w => w.id === id);
+    if (item) { item.width = rw; item.height = rh; store.set('windows', list); }
   });
 
   win.on('closed', () => {
@@ -351,7 +403,10 @@ function persistNote(id, text, x, y, width, height) {
 }
 
 // ─── 快捷输入窗口 ───────────────────────────────────────────────
+let quickInputActive = false;
 function showQuickInput() {
+  if (quickInputActive) return;
+  quickInputActive = true;
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
   const win = new BrowserWindow({
@@ -360,7 +415,8 @@ function showQuickInput() {
     y: Math.round((height - 80) / 2),
     frame: false, transparent: true,
     alwaysOnTop: true, skipTaskbar: true,
-    resizable: false, show: false,
+    resizable: false, icon: path.join(__dirname, '../assets/icon.png'),
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true
@@ -370,14 +426,23 @@ function showQuickInput() {
   win.loadFile(path.join(__dirname, '../renderer/note/quickinput.html'));
   win.once('ready-to-show', () => win.show());
 
+  let quickInputHandled = false;
   ipcMain.once('quickinput:confirm', (_e, text) => {
-    win.close();
+    if (quickInputHandled) return;
+    quickInputHandled = true;
+    const [ix, iy] = win.isDestroyed() ? [0, 0] : win.getPosition();
+    if (!win.isDestroyed()) win.close();
     if (text && text.trim()) {
-      const cursor = screen.getCursorScreenPoint();
-      createNoteWindow(text.trim(), Math.round(cursor.x - 130), Math.round(cursor.y - 60));
+      createNoteWindow(text.trim(), ix, iy);
     }
+    quickInputActive = false;
   });
-  ipcMain.once('quickinput:cancel', () => win.close());
+  ipcMain.once('quickinput:cancel', () => {
+    if (quickInputHandled) return;
+    quickInputHandled = true;
+    if (!win.isDestroyed()) win.close();
+    quickInputActive = false;
+  });
 }
 
 // ─── IPC ───────────────────────────────────────────────────────
@@ -393,20 +458,20 @@ function setupIPC() {
     if (!entry || entry.win.isDestroyed()) return;
     const [x, y] = entry.win.getPosition();
     const [w, h] = entry.win.getSize();
+    // use locked size during drag, fallback to current size
+    const [lw, lh] = entry._dragSize || [w, h];
     const nx = x + dx;
     const ny = y + dy;
 
     movingWindows.add(id);
     clearTimeout(entry._moveTimer);
-    entry._moveTimer = setTimeout(() => movingWindows.delete(id), 150);
+    entry._moveTimer = setTimeout(() => movingWindows.delete(id), 5000);
 
-    entry.win.setPosition(Math.round(nx), Math.round(ny));
-
-    const snapped = applyMagneticSnap(id, nx, ny, w, h);
-    entry.win.setPosition(Math.round(snapped.x), Math.round(snapped.y));
+    const snapped = applyMagneticSnap(id, nx, ny, lw, lh);
+    entry.win.setBounds({ x: Math.round(snapped.x), y: Math.round(snapped.y), width: lw, height: lh });
 
     const [sx2, sy2] = entry.win.getPosition();
-    resolveOverlap(id, sx2, sy2, w, h);
+    resolveOverlap(id, sx2, sy2, lw, lh);
 
     const [fx, fy] = entry.win.getPosition();
     const list = store.get('windows', []);
@@ -416,29 +481,67 @@ function setupIPC() {
 
   ipcMain.on('win:bring-to-top', (_e, id) => bringToTop(id));
 
+  ipcMain.on('drag:start', (_e, id) => {
+    const entry = windows.get(id);
+    if (!entry) return;
+    movingWindows.add(id);
+    clearTimeout(entry._moveTimer);
+    // safety: restore everything after 5s if drag:end never arrives
+    entry._moveTimer = setTimeout(() => {
+      if (entry._dragSize && !entry.win.isDestroyed()) {
+        entry.win.setResizable(true);
+        delete entry._dragSize;
+      }
+      movingWindows.delete(id);
+    }, 5000);
+    const [w, h] = entry.win.getSize();
+    entry._dragSize = [w, h];
+    entry.win.setResizable(false);
+  });
+  ipcMain.on('drag:end', (_e, id) => {
+    const entry = windows.get(id);
+    if (!entry) return;
+    entry.win.setResizable(true);
+    // restore size if DWM changed it during drag
+    if (entry._dragSize) {
+      const [w, h] = entry.win.getSize();
+      const [dw, dh] = entry._dragSize;
+      if (w !== dw || h !== dh) {
+        entry.win.setSize(dw, dh);
+      }
+      delete entry._dragSize;
+    }
+    // persist final position
+    const [fx, fy] = entry.win.getPosition();
+    const list = store.get("windows", []);
+    const item = list.find(wi => wi.id === id);
+    if (item) { item.x = fx; item.y = fy; store.set("windows", list); }
+    // delayed guard removal — catch any queued resize events
+    clearTimeout(entry._moveTimer);
+    entry._moveTimer = setTimeout(() => movingWindows.delete(id), 300);
+  });
+
   ipcMain.on('win:close', (_e, id) => {
     const entry = windows.get(id);
     if (entry && !entry.win.isDestroyed()) entry.win.close();
   });
 
-  ipcMain.handle('dock:get-windows', () =>
-    [...windows.values()]
-      .filter(e => !e.win.isDestroyed())
-      .map(({ id, type }) => ({ id, type }))
-  );
-  ipcMain.on('dock:hide-all', () => hideAll());
-  ipcMain.on('dock:show-all', () => showAll());
-  ipcMain.on('dock:show-win', (_e, id) => {
-    const entry = windows.get(id);
-    if (entry && !entry.win.isDestroyed()) entry.win.show();
+  // 设置窗口
+  const configPath = path.join(__dirname, '../configs/default.json');
+  ipcMain.handle('settings:get', () => {
+    try { return JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch (_) { return { shortcuts: {} }; }
   });
-  ipcMain.on('dock:hide-win', (_e, id) => {
-    const entry = windows.get(id);
-    if (entry && !entry.win.isDestroyed()) entry.win.hide();
+  ipcMain.handle('settings:save', (_e, shortcuts) => {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      cfg.shortcuts = shortcuts;
+      fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2));
+      const { registerShortcuts, unregisterAll } = require('./shortcuts');
+      unregisterAll();
+      registerShortcuts(module.exports);
+      return true;
+    } catch (e) { console.error('[SnapPin] settings save error:', e); return false; }
   });
-
-  ipcMain.on('note:create', () => showQuickInput());
-  ipcMain.on('snap:start-capture', () => startSnapCapture());
 }
 
 function hideAll() {
@@ -451,23 +554,70 @@ function showAll() {
     if (!entry.win.isDestroyed()) entry.win.show();
   }
 }
+function closeAll() {
+  for (const [, entry] of windows) {
+    if (!entry.win.isDestroyed()) entry.win.close();
+  }
+}
 
 function restoreWindows() {
   const list = store.get('windows', []);
+  const validPaths = new Set();
+  const restored = [];
+
   for (const entry of list) {
     if (entry.type === 'snap' && entry.imgPath && fs.existsSync(entry.imgPath)) {
+      validPaths.add(entry.imgPath);
+      restored.push(entry);
       createSnapWindow(entry.imgPath, {
         x: entry.x || 200, y: entry.y || 200,
         width: entry.width || 400, height: entry.height || 300
       });
     } else if (entry.type === 'note') {
+      restored.push(entry);
       createNoteWindow(entry.text || '', entry.x, entry.y);
     }
   }
+
+  // 清理失效的截图条目
+  if (restored.length !== list.length) {
+    store.set('windows', restored);
+  }
+
+  // 清理孤儿临时文件（无对应 store 条目的 snappin-*.png）
+  try {
+    const tmpDir = os.tmpdir();
+    const orphans = fs.readdirSync(tmpDir).filter(f =>
+      f.startsWith('snappin-') && f.endsWith('.png') && !validPaths.has(path.join(tmpDir, f))
+    );
+    for (const f of orphans) {
+      try { fs.unlinkSync(path.join(tmpDir, f)); } catch (_) {}
+    }
+  } catch (_) {}
+}
+
+function showSettings() {
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  const win = new BrowserWindow({
+    width: 380, height: 260,
+    x: Math.round((sw - 380) / 2),
+    y: Math.round((sh - 260) / 2),
+    icon: path.join(__dirname, '../assets/icon.png'),
+    frame: false, transparent: true, resizable: false,
+    show: false,
+    webPreferences: {
+      contextIsolation: false,
+      nodeIntegration: true,
+      sandbox: false
+    }
+  });
+  win.setMenuBarVisibility(false);
+  win.loadFile(path.join(__dirname, '../renderer/settings.html'));
+  win.once('ready-to-show', () => win.show());
 }
 
 module.exports = {
   setupIPC, startSnapCapture, createSnapWindow,
-  createNoteWindow, showQuickInput, restoreWindows,
-  hideAll, showAll, windows
+  createNoteWindow, showQuickInput, showSettings, restoreWindows,
+  hideAll, showAll, closeAll, windows
 };

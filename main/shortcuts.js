@@ -1,13 +1,22 @@
 const { globalShortcut } = require('electron');
-const config = require('../configs/default.json');
+
+let loadedConfig;
+function loadConfig() {
+  delete require.cache[require.resolve('../configs/default.json')];
+  loadedConfig = require('../configs/default.json');
+  return loadedConfig;
+}
 
 function registerShortcuts(wm) {
-  const keys = config.shortcuts;
+  const cfg = loadConfig();
+  const keys = cfg.shortcuts;
   if (keys.screenshot) {
-    globalShortcut.register(keys.screenshot, () => wm.startSnapCapture());
+    const ok = globalShortcut.register(keys.screenshot, () => wm.startSnapCapture());
+    if (!ok) console.error('[SnapPin] shortcut registration failed:', keys.screenshot);
   }
   if (keys.newNote) {
-    globalShortcut.register(keys.newNote, () => wm.showQuickInput());
+    const ok = globalShortcut.register(keys.newNote, () => wm.showQuickInput());
+    if (!ok) console.error('[SnapPin] shortcut registration failed:', keys.newNote);
   }
 }
 

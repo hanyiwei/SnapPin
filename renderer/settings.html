@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; user-select: none; }
+  body {
+    background: transparent;
+    font-family: -apple-system, "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-size: 14px; color: #1d1d1f;
+    padding: 2px;
+  }
+
+  .win {
+    height: 100%; background: #fff; border-radius: 12px;
+    display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.12);
+  }
+
+  /* 标题栏：快捷键 + 关闭按钮同行 */
+  .bar {
+    display: flex; align-items: center;
+    padding: 12px 8px 8px 20px;
+    -webkit-app-region: drag; flex-shrink: 0;
+  }
+  .bar .title { font-size: 15px; font-weight: 600; flex: 1; }
+  .bar .close {
+    width: 30px; height: 30px; border-radius: 50%; border: none;
+    background: none; font-size: 16px; color: #999; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; -webkit-app-region: no-drag;
+  }
+  .bar .close:hover { background: #f2f2f2; color: #333; }
+
+  /* 主体 */
+  .main { flex: 1; padding: 8px 20px 0; }
+
+  .row {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 40px; padding: 0 12px;
+    border-radius: 6px; cursor: pointer; transition: background 0.15s;
+  }
+  .row:hover { background: #f5f5f5; }
+  .row .name { font-size: 13px; }
+
+  .hotkey {
+    min-width: 150px; height: 28px; padding: 0 10px;
+    border: 1px solid #e5e5e5; border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: "SF Mono","Cascadia Code","Consolas",monospace;
+    font-size: 11px; background: #fff;
+    transition: border-color 0.15s;
+  }
+  .row.recording { background: #f9f9f9; }
+  .row.recording .hotkey { border-color: #333; }
+  .hotkey .ph { color: #bbb; }
+  .hotkey .val { color: #1d1d1f; font-weight: 500; }
+
+  /* 底部按钮 */
+  .foot {
+    display: flex; justify-content: flex-end; gap: 8px;
+    padding: 16px 20px 20px; flex-shrink: 0;
+  }
+  .foot button {
+    height: 32px; padding: 0 18px; border-radius: 6px;
+    font-size: 13px; cursor: pointer;
+    border: 1px solid #ddd; background: #fff; color: #555;
+    transition: background 0.15s;
+  }
+  .foot button:hover { background: #f5f5f5; }
+  .foot button.primary {
+    background: #1d1d1f; color: #fff; border-color: #1d1d1f;
+  }
+  .foot button.primary:hover { background: #333; }
+</style>
+</head>
+<body>
+
+<div class="win">
+  <div class="bar">
+    <div class="title">快捷键</div>
+    <button class="close" onclick="window.close()">&times;</button>
+  </div>
+
+  <div class="main">
+    <div class="row" id="row-screenshot">
+      <div class="name">截图贴</div>
+      <div class="hotkey" tabindex="0" data-key="screenshot">
+        <span class="ph">未设置</span>
+      </div>
+    </div>
+    <div class="row" id="row-note">
+      <div class="name">文本贴</div>
+      <div class="hotkey" tabindex="0" data-key="note">
+        <span class="ph">未设置</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <button onclick="window.close()">取消</button>
+    <button class="primary" onclick="save()">保存更改</button>
+  </div>
+</div>
+
+<script>
+  const { ipcRenderer } = require('electron');
+  const rows = {
+    screenshot: document.getElementById('row-screenshot'),
+    note: document.getElementById('row-note')
+  };
+  const hks = {
+    screenshot: rows.screenshot.querySelector('.hotkey'),
+    note: rows.note.querySelector('.hotkey')
+  };
+  let original = {};
+  let loaded = false;
+
+  async function load() {
+    const cfg = await ipcRenderer.invoke('settings:get');
+    original.screenshot = cfg.shortcuts.screenshot || '';
+    original.note = cfg.shortcuts.newNote || '';
+    display('screenshot', original.screenshot);
+    display('note', original.note);
+    loaded = true;
+  }
+
+  function display(k, v) {
+    const el = hks[k];
+    el.innerHTML = v ? '<span class="val">'+v+'</span>' : '<span class="ph">未设置</span>';
+    el.dataset.v = v;
+  }
+  function get(k) { return hks[k].dataset.v || ''; }
+
+  function enter(k) { rows[k].classList.add('recording'); hks[k].innerHTML = '<span class="ph">按下组合键…</span>'; }
+  function leave(k) { rows[k].classList.remove('recording'); display(k, get(k)); }
+
+  async function save() {
+    if (!loaded) return;
+    await ipcRenderer.invoke('settings:save', {
+      screenshot: get('screenshot'),
+      newNote: get('note')
+    });
+    window.close();
+  }
+
+  function kl(k) {
+    const m = {
+      ArrowUp:'Up',ArrowDown:'Down',ArrowLeft:'Left',ArrowRight:'Right',
+      ' ':'Space',Control:'Ctrl',Escape:'Esc',PageUp:'PgUp',PageDown:'PgDn',
+      Home:'Home',End:'End',Insert:'Ins',Delete:'Del',
+      MediaNextTrack:'MediaNext',MediaPreviousTrack:'MediaPrev',
+      MediaPlayPause:'MediaPlay',AudioVolumeUp:'VolUp',
+      AudioVolumeDown:'VolDn',AudioVolumeMute:'Mute',
+    };
+    if (m[k]) return m[k];
+    if (k.startsWith('Key')||k.startsWith('Digit')) return k.slice(-1);
+    if (k.startsWith('Numpad')) return 'Num'+k.slice(6);
+    return k.length===1 ? k.toUpperCase() : k;
+  }
+
+  Object.entries(hks).forEach(([k, el]) => {
+    el.addEventListener('focus', () => enter(k));
+    el.addEventListener('blur', () => leave(k));
+    el.addEventListener('keydown', (e) => {
+      e.preventDefault();
+      if (e.key==='Escape'||e.key==='Tab') { el.blur(); return; }
+      if (e.key==='Backspace'||e.key==='Delete') { hks[k].dataset.v = ''; leave(k); return; }
+      if (e.key==='Enter' || ['Control','Shift','Alt','Meta'].includes(e.key)) return;
+      const p = [];
+      if (e.ctrlKey)  p.push('Ctrl');
+      if (e.altKey)   p.push('Alt');
+      if (e.shiftKey) p.push('Shift');
+      if (e.metaKey)  p.push('Cmd');
+      p.push(kl(e.key));
+      hks[k].dataset.v = p.join('+');
+      leave(k);
+    });
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (!e.target.closest('.hotkey')) document.activeElement?.blur();
+  });
+
+  load();
+</script>
+</body>
+</html>

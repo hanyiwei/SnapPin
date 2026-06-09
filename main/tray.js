@@ -1,7 +1,57 @@
-const { Tray, Menu, nativeImage } = require('electron');
+const { Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
+const config = require('../configs/default.json');
+
+const VERSION = require('../package.json').version;
 
 let tray = null;
+let allVisible = true;
+
+function buildMenu(wm) {
+  const sc = config.shortcuts;
+  return Menu.buildFromTemplate([
+    {
+      label: '全部关闭', click: () => {
+        wm.closeAll();
+        allVisible = false;
+        tray.setContextMenu(buildMenu(wm));
+      }
+    },
+    {
+      label: allVisible ? '全部隐藏' : '全部显示',
+      click: () => {
+        if (allVisible) {
+          wm.hideAll();
+          allVisible = false;
+        } else {
+          wm.showAll();
+          allVisible = true;
+        }
+        tray.setContextMenu(buildMenu(wm));
+      }
+    },
+    { type: 'separator' },
+    {
+      label: `新建文本贴    ${sc.newNote}`, click: () => wm.showQuickInput()
+    },
+    {
+      label: `新建截图贴    ${sc.screenshot}`, click: () => wm.startSnapCapture()
+    },
+    { type: 'separator' },
+    {
+      label: '设置', click: () => wm.showSettings()
+    },
+    {
+      label: `检查更新    v${VERSION}`, click: () => {
+        shell.openExternal('https://github.com/hanyiwei/SnapPin/releases');
+      }
+    },
+    { type: 'separator' },
+    {
+      label: '退出', click: () => { require('electron').app.quit(); }
+    }
+  ]);
+}
 
 function createTray(wm) {
   let icon;
@@ -10,8 +60,6 @@ function createTray(wm) {
     if (process.platform === 'darwin') {
       icon = icon.resize({ width: 22, height: 22 });
       icon.setTemplateImage(true);
-    } else {
-      // 不 resize，系统自行处理高分屏缩放
     }
   } catch {
     icon = nativeImage.createEmpty();
@@ -19,28 +67,7 @@ function createTray(wm) {
 
   tray = new Tray(icon);
   tray.setToolTip('SnapPin');
-
-  const menu = Menu.buildFromTemplate([
-    {
-      label: '全部隐藏', click: () => wm.hideAll()
-    },
-    {
-      label: '全部显示', click: () => wm.showAll()
-    },
-    { type: 'separator' },
-    {
-      label: '新建文本贴', click: () => wm.showQuickInput()
-    },
-    {
-      label: '新建截图贴', click: () => wm.startSnapCapture()
-    },
-    { type: 'separator' },
-    {
-      label: '退出', click: () => { require('electron').app.quit(); }
-    }
-  ]);
-
-  tray.setContextMenu(menu);
+  tray.setContextMenu(buildMenu(wm));
 }
 
 module.exports = { createTray };

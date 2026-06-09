@@ -8,34 +8,32 @@ html, body {
   color: #333;
 }
 
-body {
-  /* 圆角卡片，纯淡黄色背景 */
-  background: #FFF9C4;
-  border-radius: 10px;
-  position: relative;
-}
-
-/* 顶部 20px 隐形拖拽区 */
-#drag-area {
+#bg {
   position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 20px;
-  cursor: move;
-  z-index: 2;
-  /* 视觉上完全无提示 */
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #FFF9C4;
+  border-radius: 12px;
+  z-index: 0;
 }
 
-/* 可编辑文本区域 */
+/* 可编辑文本区域 — 默认只读模式 */
 #content {
   position: absolute;
   top: 10px; left: 12px; right: 12px; bottom: 10px;
   overflow-y: auto;
   outline: none;
-  cursor: text;
   line-height: 1.72;
   word-break: break-word;
   white-space: pre-wrap;
   z-index: 1;
+  cursor: move;
+  user-select: none;
+}
+
+/* 编辑模式 */
+body.editing #content {
+  cursor: text;
+  user-select: text;
 }
 
 /* 悬停浮现关闭按钮 */
@@ -61,6 +59,17 @@ body:hover #close-btn {
   opacity: 1 !important;
   background: rgba(0,0,0,0.08);
   color: #555;
+}
+
+/* 右下角缩放拖拽手柄 */
+#resize-handle {
+  position: absolute;
+  bottom: 2px; right: 2px;
+  width: 14px; height: 14px;
+  cursor: nwse-resize;
+  z-index: 10;
+  background: linear-gradient(135deg, transparent 50%, rgba(128,128,128,0.25) 50%);
+  border-radius: 0 0 12px 0;
 }
 
 /* 滚动条美化 */

@@ -13,13 +13,26 @@
     display: none;
     box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
   }
+  #info {
+    position: absolute;
+    display: none;
+    color: #fff;
+    font: 12px/1.4 "Microsoft YaHei", sans-serif;
+    background: rgba(0,0,0,0.7);
+    padding: 2px 6px;
+    border-radius: 3px;
+    pointer-events: none;
+    white-space: nowrap;
+  }
 </style>
 </head>
 <body>
 <div id="sel"></div>
+<div id="info"></div>
 <script>
   const { ipcRenderer } = require('electron');
   const sel = document.getElementById('sel');
+  const info = document.getElementById('info');
   let startX = 0, startY = 0;
 
   ipcRenderer.send('capture:ready');
@@ -32,6 +45,7 @@
     sel.style.width = '0px';
     sel.style.height = '0px';
     sel.style.display = 'block';
+    info.style.display = 'block';
   });
 
   document.addEventListener('mousemove', (e) => {
@@ -44,11 +58,19 @@
     sel.style.top = y + 'px';
     sel.style.width = w + 'px';
     sel.style.height = h + 'px';
+
+    info.textContent = `${w} × ${h}`;
+    // 标签贴在鼠标所在角
+    const offsetX = e.clientX > startX ? 8 : -(info.offsetWidth + 8);
+    const offsetY = e.clientY > startY ? 8 : -(info.offsetHeight + 8);
+    info.style.left = (e.clientX + offsetX) + 'px';
+    info.style.top = (e.clientY + offsetY) + 'px';
   });
 
   document.addEventListener('mouseup', () => {
     if (sel.style.display !== 'block') return;
     sel.style.display = 'none';
+    info.style.display = 'none';
     const rect = {
       x: parseInt(sel.style.left),
       y: parseInt(sel.style.top),
